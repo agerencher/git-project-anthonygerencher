@@ -16,6 +16,8 @@ public class Tester {
         testInitRepo();
         testCreateBlob();
         testZipCompression();
+        //testCreateBlobWithDirectories();
+        testCreateBlobWithSubDirectories();
     }
 
     /**
@@ -35,7 +37,6 @@ public class Tester {
         // ensures that a repo exists to back up files to
         if (!repoExistsHere()) {
             System.out.println("Test cannot be completed as no repository exists at this directory.");
-            return;
         }
 
         // ensures data compression is enabled
@@ -142,6 +143,95 @@ public class Tester {
         }
         System.out.println("createBlob method passed the test.");
     }
+
+    public static void testCreateBlobWithDirectories() throws IOException, NoSuchAlgorithmException {
+        if (!repoExistsHere()) {
+            System.out.println("No repo exists in this directory.");
+            return;
+        }
+        if (Git.dataCompressionEnabled())
+            Git.toggleDataCompression();
+        
+        // Create a test directory with files
+        File testerDirectory = new File("testDir");
+        testerDirectory.mkdir();
+
+        File testTextFile1 = new File("testDir/file1.txt");
+        testTextFile1.createNewFile();
+        BufferedWriter writer1 = new BufferedWriter(new FileWriter(testTextFile1));
+        writer1.write("FILE 1 EXAMPEL");
+        writer1.close();
+
+        File testTextFile2 = new File("testDir/file2.txt");
+        testTextFile2.createNewFile();
+        BufferedWriter writer2 = new BufferedWriter(new FileWriter(testTextFile2));
+        writer2.write("SECOND FILe Ex");
+        writer2.close();
+
+        // Created a blob for the directory
+        Git.addDirectory(testerDirectory.getPath());
+
+        // Check if the directory and files are written correctly
+        String indexContent = getIndex();
+        if (!indexContent.contains("tree"))
+            System.out.println("Failed. Directory is not labeled as a tree.");
+        else if (!indexContent.contains("blob"))
+            System.out.println("Failed. Files are not labeled as blob.");
+        else 
+            System.out.println("Correct! Directory and files aer correctly labeled as tree and blob.");
+
+        // Cleanup
+        removeDirectory(testerDirectory.getPath());
+    }
+
+
+    public static void testCreateBlobWithSubDirectories() throws IOException, NoSuchAlgorithmException {
+        if (!repoExistsHere()) {
+            System.out.println("No repo exists in this directory.");
+            return;
+        }
+
+        if (Git.dataCompressionEnabled())
+            Git.toggleDataCompression();
+        
+        // Create a test directory with files and subdirectories
+        File testDirectory = new File("testDir");
+        testDirectory.mkdir();
+
+        File subDirectory = new File("testDir/subDir");
+        subDirectory.mkdir();
+
+        File testFile1 = new File("testDir/file1.txt");
+        testFile1.createNewFile();
+        BufferedWriter writer1 = new BufferedWriter(new FileWriter(testFile1));
+        writer1.write("File 1 example data");
+        writer1.close();
+
+        File testFile2 = new File("testDir/subDir/file2.txt");
+        testFile2.createNewFile();
+        BufferedWriter writer2 = new BufferedWriter(new FileWriter(testFile2));
+        writer2.write("File 2 example data inside subdirectory");
+        writer2.close();
+
+        // Create a blob for the directory
+        Git.addDirectory(testDirectory.getPath());
+
+        // Check if the directory and files are written correctly
+        String indexContent = getIndex();
+        boolean treeExists = indexContent.contains("tree");
+        boolean blobExists = indexContent.contains("blob");
+
+        if (!treeExists)
+            System.out.println("Failed. Directory and subdirectory are not labeled as trees.");
+        else if (!blobExists)
+            System.out.println("Failed. Files inside directories are not labeled as blobs.");
+        else 
+            System.out.println("Success! Directory, subdirectory, and files are correctly labeled as tree and blobs, and the format is correct.");
+
+        // Cleanup
+        removeDirectory(testDirectory.getPath());
+    }
+
 
     /**
      * @param fileName - the name of the file

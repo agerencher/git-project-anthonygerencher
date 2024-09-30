@@ -115,6 +115,45 @@ public class Git {
         reader.close();
         return false;
     }
+    //Adds a directory given its path. Adds files and subdirectories.
+    public static String addDirectory(String pathToDirectory) throws NoSuchAlgorithmException, IOException {
+        File directory = new File(pathToDirectory);
+        if (!directory.exists() || !directory.isDirectory()) {
+            throw new FileNotFoundException("Directory DNE");
+        }
+
+        // Create a temporary tree file to store contents of file and directories
+        File tempTreeFile = File.createTempFile("tree", ".tmp");
+        BufferedWriter writer = new BufferedWriter(new FileWriter(tempTreeFile));
+        File [] fileArray = directory.listFiles();
+        for (int i = 0; i < fileArray.length; i++) {
+            if (fileArray[i].isFile()) {
+                // Create a blob for the file
+                String blobHash = generateHash(fileArray[i].getPath());
+                createBlob(fileArray[i].getPath());
+                writer.write("blob " + blobHash + " " + fileArray[i].getName());
+                writer.newLine();
+            }
+            else if (fileArray[i].isDirectory()) {
+                //writes hash then recursively calls to add sub-directory
+                String treeHash = addDirectory(fileArray[i].getPath());
+                writer.write("tree " + treeHash + " " + fileArray[i].getName());
+                writer.newLine();
+            }
+        }
+        writer.close();
+
+        //get hash for the tree file
+        String treeHash = generateHash(tempTreeFile.getPath());
+
+        File treeToObjs = new File("git/objects/" + treeHash);
+        if (!treeToObjs.exists()) {
+            createBackup(tempTreeFile.getPath(), treeHash);
+        }
+        updateIndex(pathToDirectory, treeHash);
+        tempTreeFile.delete();
+        return treeHash;
+    }
 
     /**
      * Zip compresses a file and stores under the same name it with the .zip suffix.
@@ -148,12 +187,30 @@ public class Git {
      * @param hash       - the hash of the file
      * @throws IOException
      */
-    private static void updateIndex(String pathToFile, String hash) throws IOException {
+    private static void updateIndex(String pathToFile, String hash) throws IOException, NoSuchAlgorithmException {
+        if (indexContainsFile(pathToFile)) {
+            return;
+        }
+        File file = new File(pathToFile);
         File index = new File("git/index");
+        String path = file.getPath();
         BufferedWriter writer = new BufferedWriter(new FileWriter(index, true));
-        writer.write(hash + " " + pathToFile.substring(pathToFile.lastIndexOf("/") + 1));
+        if (file.isDirectory())
+            writer.write("tree " + hash + " " + path);
+        else
+            writer.write("blob " + hash + " " + path);
         writer.newLine();
         writer.close();
+        if (file.isDirectory()) {
+            File[] contents = file.listFiles();
+            if (contents.length > 0) {
+                for (int i = 0; i < contents.length; i++) {
+                    String contentsHash = generateHash(contents[i].getPath());
+                    //recursively calls updateIndex again to run through sub-directories
+                    updateIndex(contents[i].getPath(), contentsHash);
+                }
+            }
+        }
     }
 
     /**
@@ -182,19 +239,33 @@ public class Git {
     private static String generateHash(String pathToFile) throws NoSuchAlgorithmException, IOException {
         MessageDigest md = MessageDigest.getInstance("SHA-1");
         File file = new File(pathToFile);
-        // this could cause issues if the file is greater than 2 billion bytes/bits idk
-        // which
-        byte[] byteData = new byte[(int) file.length()];
 
-        // Reads the byte data into a byte array
-        FileInputStream inputStream = new FileInputStream(file);
-        inputStream.read(byteData);
-        inputStream.close();
+        if (file.isFile()) {
+            byte[] byteData = new byte[(int) file.length()];
 
-        // Hashes the byte data via the SHA-1 algorithm
-        byte[] hash = md.digest(byteData);
+            //Reads the byte data into a byte array
+            FileInputStream inputStream = new FileInputStream(file);
+            inputStream.read(byteData);
+            inputStream.close();
 
-        return byteArrayToHexString(hash);
+            //Hashes the byte data using the SHA-1
+            byte[] hash = md.digest(byteData);
+            return byteArrayToHexString(hash);
+        }
+        else if (file.isDirectory()) {
+            //for directories, need to connect all hashes to represent all contents of directory
+            StringBuffer connectedHash = new StringBuffer();
+            File[] contents = file.listFiles();
+            if (contents.length > 0) {
+                for (int i = 0; i < contents.length; i++) {
+                    connectedHash.append(generateHash(contents[i].getPath()));
+                }
+            }
+            //Finishes the hash and returns the SHA-1 hash as a byte array and then converts to string
+            byte[] hash = md.digest(connectedHash.toString().getBytes());
+            return byteArrayToHexString(hash);
+        }
+        return null;
     }
 
     /**
