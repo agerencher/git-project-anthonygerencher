@@ -16,8 +16,10 @@ public class Tester {
         testInitRepo();
         testCreateBlob();
         testZipCompression();
-        //testCreateBlobWithDirectories();
+        // testCreateBlobWithDirectories();
         testCreateBlobWithSubDirectories();
+        testRootTreeCreation();
+
     }
 
     /**
@@ -151,7 +153,7 @@ public class Tester {
         }
         if (Git.dataCompressionEnabled())
             Git.toggleDataCompression();
-        
+
         // Create a test directory with files
         File testerDirectory = new File("testDir");
         testerDirectory.mkdir();
@@ -177,13 +179,12 @@ public class Tester {
             System.out.println("Failed. Directory is not labeled as a tree.");
         else if (!indexContent.contains("blob"))
             System.out.println("Failed. Files are not labeled as blob.");
-        else 
+        else
             System.out.println("Correct! Directory and files aer correctly labeled as tree and blob.");
 
         // Cleanup
         removeDirectory(testerDirectory.getPath());
     }
-
 
     public static void testCreateBlobWithSubDirectories() throws IOException, NoSuchAlgorithmException {
         if (!repoExistsHere()) {
@@ -193,7 +194,7 @@ public class Tester {
 
         if (Git.dataCompressionEnabled())
             Git.toggleDataCompression();
-        
+
         // Create a test directory with files and subdirectories
         File testDirectory = new File("testDir");
         testDirectory.mkdir();
@@ -225,13 +226,50 @@ public class Tester {
             System.out.println("Failed. Directory and subdirectory are not labeled as trees.");
         else if (!blobExists)
             System.out.println("Failed. Files inside directories are not labeled as blobs.");
-        else 
-            System.out.println("Success! Directory, subdirectory, and files are correctly labeled as tree and blobs, and the format is correct.");
+        else
+            System.out.println(
+                    "Success! Directory, subdirectory, and files are correctly labeled as tree and blobs, and the format is correct.");
 
         // Cleanup
         removeDirectory(testDirectory.getPath());
     }
 
+    public static void testRootTreeCreation() throws IOException, NoSuchAlgorithmException {
+        if (!repoExistsHere()) {
+            System.out.println("No repo exists in this directory.");
+            return;
+        }
+
+        if (Git.dataCompressionEnabled())
+            Git.toggleDataCompression();
+
+        // Create a test directory with files and subdirectories
+        File testDirectory = new File("testDir");
+        testDirectory.mkdir();
+
+        File subDirectory = new File("testDir/subDir");
+        subDirectory.mkdir();
+
+        File testFile1 = new File("testDir/file1.txt");
+        testFile1.createNewFile();
+        BufferedWriter writer1 = new BufferedWriter(new FileWriter(testFile1));
+        writer1.write("File 1 example data");
+        writer1.close();
+
+        File testFile2 = new File("testDir/subDir/file2.txt");
+        testFile2.createNewFile();
+        BufferedWriter writer2 = new BufferedWriter(new FileWriter(testFile2));
+        writer2.write("File 2 example data inside subdirectory");
+        writer2.close();
+
+        // Create a blob for the directory
+        // Git.addDirectory(testDirectory.getPath());
+
+        // Check if the directory and files are written correctly
+        Git.createRootTreeFile(testDirectory.getPath());
+        // Cleanup
+        // removeDirectory(testDirectory.getPath());
+    }
 
     /**
      * @param fileName - the name of the file
@@ -385,7 +423,6 @@ public class Tester {
     private static int randomInt(int low, int high) {
         return (int) (Math.random() * (high - low) + low);
     }
-
 
     /**
      * Prints an array of bytes to the console.
