@@ -11,9 +11,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Objects;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import java.util.*;
 
 public class Git {
 
@@ -33,6 +33,7 @@ public class Git {
         File gitFolder = new File("git");
         File objectFolder = new File("git/objects");
         File indexFile = new File("git/index");
+        File headFile = new File("git/HEAD");
 
         // Checks if repository has already been created
         if (repoExistsHere())
@@ -46,6 +47,8 @@ public class Git {
                 objectFolder.mkdirs();
             if (!indexFile.exists())
                 indexFile.createNewFile();
+            if (!headFile.exists())
+                headFile.createNewFile();
         }
     }
 
@@ -115,7 +118,8 @@ public class Git {
         reader.close();
         return false;
     }
-    //Adds a directory given its path. Adds files and subdirectories.
+
+    // Adds a directory given its path. Adds files and subdirectories.
     public static String addDirectory(String pathToDirectory) throws NoSuchAlgorithmException, IOException {
         File directory = new File(pathToDirectory);
         if (!directory.exists() || !directory.isDirectory()) {
@@ -125,7 +129,7 @@ public class Git {
         // Create a temporary tree file to store contents of file and directories
         File tempTreeFile = File.createTempFile("tree", ".tmp");
         BufferedWriter writer = new BufferedWriter(new FileWriter(tempTreeFile));
-        File [] fileArray = directory.listFiles();
+        File[] fileArray = directory.listFiles();
         for (int i = 0; i < fileArray.length; i++) {
             if (fileArray[i].isFile()) {
                 // Create a blob for the file
@@ -133,9 +137,8 @@ public class Git {
                 createBlob(fileArray[i].getPath());
                 writer.write("blob " + blobHash + " " + fileArray[i].getName());
                 writer.newLine();
-            }
-            else if (fileArray[i].isDirectory()) {
-                //writes hash then recursively calls to add sub-directory
+            } else if (fileArray[i].isDirectory()) {
+                // writes hash then recursively calls to add sub-directory
                 String treeHash = addDirectory(fileArray[i].getPath());
                 writer.write("tree " + treeHash + " " + fileArray[i].getName());
                 writer.newLine();
@@ -143,7 +146,7 @@ public class Git {
         }
         writer.close();
 
-        //get hash for the tree file
+        // get hash for the tree file
         String treeHash = generateHash(tempTreeFile.getPath());
 
         File treeToObjs = new File("git/objects/" + treeHash);
@@ -206,7 +209,7 @@ public class Git {
             if (contents.length > 0) {
                 for (int i = 0; i < contents.length; i++) {
                     String contentsHash = generateHash(contents[i].getPath());
-                    //recursively calls updateIndex again to run through sub-directories
+                    // recursively calls updateIndex again to run through sub-directories
                     updateIndex(contents[i].getPath(), contentsHash);
                 }
             }
@@ -243,17 +246,17 @@ public class Git {
         if (file.isFile()) {
             byte[] byteData = new byte[(int) file.length()];
 
-            //Reads the byte data into a byte array
+            // Reads the byte data into a byte array
             FileInputStream inputStream = new FileInputStream(file);
             inputStream.read(byteData);
             inputStream.close();
 
-            //Hashes the byte data using the SHA-1
+            // Hashes the byte data using the SHA-1
             byte[] hash = md.digest(byteData);
             return byteArrayToHexString(hash);
-        }
-        else if (file.isDirectory()) {
-            //for directories, need to connect all hashes to represent all contents of directory
+        } else if (file.isDirectory()) {
+            // for directories, need to connect all hashes to represent all contents of
+            // directory
             StringBuffer connectedHash = new StringBuffer();
             File[] contents = file.listFiles();
             if (contents.length > 0) {
@@ -261,7 +264,8 @@ public class Git {
                     connectedHash.append(generateHash(contents[i].getPath()));
                 }
             }
-            //Finishes the hash and returns the SHA-1 hash as a byte array and then converts to string
+            // Finishes the hash and returns the SHA-1 hash as a byte array and then
+            // converts to string
             byte[] hash = md.digest(connectedHash.toString().getBytes());
             return byteArrayToHexString(hash);
         }
@@ -293,5 +297,68 @@ public class Git {
      */
     public static boolean dataCompressionEnabled() {
         return compressData;
+    }
+
+    public static String createRootTreeFile(String rootInputFilePath) throws IOException, NoSuchAlgorithmException {
+        File rootTree = new File("git/rootTree");
+        rootTree.createNewFile();
+        FileWriter rootHashWriter = new FileWriter("git/rootTree");
+        String rootHash = addDirectory(rootInputFilePath);
+        rootHashWriter.write(rootHash);
+        rootHashWriter.close();
+        return rootHash;
+    }
+
+    public String getHashTree(String filePath) throws NoSuchAlgorithmException, IOException {
+        String hash = addDirectory(filePath);
+        return hash;
+    }
+
+    public void stage(String stageFilePath) throws NoSuchAlgorithmException, IOException {
+        createBlob(stageFilePath);
+    }
+
+    public void commit(String message, String filePathCommit) throws IOException, NoSuchAlgorithmException {
+        File commitFile = new File("git/commitFile");
+
+        // this is the directory we want to commit
+        File directoryCommiting = new File(filePathCommit);
+
+        String author = System.getProperty("user.name");
+        File headFile = new File("git/HEAD");
+        BufferedWriter commitWriter = Files.newBufferedWriter(commitFile.toPath());
+        BufferedWriter headWriter = Files.newBufferedWriter(headFile.toPath());
+        BufferedReader headReader = Files.newBufferedReader(headFile.toPath());
+
+        // hash of directory we want to commit
+        String currentHash = createRootTreeFile(filePathCommit);
+
+        Date d1 = new Date();
+
+        if (headFile.length() < 1) {
+            headWriter.write(currentHash);
+            commitWriter.append("tree: " + currentHash);
+            commitWriter.append("\nparent: ");
+            commitWriter.append("\nauthor: " + author);
+            commitWriter.append("\ndate: " + d1);
+            commitWriter.append("\nmessage: " + message);
+            createBlob("git/commitFile");
+            commitFile.delete();
+        } else {
+            String headHash = headReader.readLine();
+            commitWriter.append("tree: " + currentHash);
+            commitWriter.append("\nparent: " + headHash);
+            commitWriter.append("\nauthor: " + author);
+            commitWriter.append("\ndate: " + d1);
+            commitWriter.append("\nmessage: " + message);
+            headFile.delete();
+            File newHeadFile = new File("git/HEAD");
+            newHeadFile.createNewFile();
+            BufferedWriter headWriterNew = Files.newBufferedWriter(newHeadFile.toPath());
+            headWriterNew.write(currentHash);
+            createBlob("git/commitFile");
+            commitFile.delete();
+        }
+
     }
 }
